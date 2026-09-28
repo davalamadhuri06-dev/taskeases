@@ -1,0 +1,6 @@
+{
+  "name": "TaskEase",
+  "description": "Organize Your Day - Simple, modern task management with AI assistant, productivity statistics, and smart filtering.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
