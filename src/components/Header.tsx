@@ -6,6 +6,7 @@ import {
   Bot,
   RotateCcw,
   Calendar,
+  Sliders,
 } from 'lucide-react';
 import { formatDateToDisplay, getTodayDateString } from '../utils/dateUtils';
 
@@ -14,6 +15,8 @@ interface HeaderProps {
   onToggleAiAssistant: () => void;
   isAiDrawerOpen: boolean;
   onResetDemoData: () => void;
+  onOpenN8nSettings?: () => void;
+  n8nEnabled?: boolean;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -21,6 +24,8 @@ export const Header: React.FC<HeaderProps> = ({
   onToggleAiAssistant,
   isAiDrawerOpen,
   onResetDemoData,
+  onOpenN8nSettings,
+  n8nEnabled = true,
 }) => {
   const todayStr = getTodayDateString();
   const formattedToday = formatDateToDisplay(todayStr);
@@ -66,6 +71,24 @@ export const Header: React.FC<HeaderProps> = ({
               <RotateCcw className="w-3.5 h-3.5" />
               <span>Reset Demo</span>
             </button>
+
+            {/* n8n Chatbot Settings Button */}
+            {onOpenN8nSettings && (
+              <button
+                onClick={onOpenN8nSettings}
+                title="Configure n8n Chatbot Webhook"
+                className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all ${
+                  n8nEnabled
+                    ? 'bg-orange-50 hover:bg-orange-100 text-orange-700 border-orange-200 hover:border-orange-300'
+                    : 'bg-slate-100 hover:bg-slate-200 text-slate-500 border-slate-200'
+                }`}
+              >
+                <Sliders className="w-3.5 h-3.5 text-orange-500" />
+                <span className="hidden xl:inline">n8n Setup</span>
+                <span className="xl:hidden">n8n</span>
+                <span className={`w-1.5 h-1.5 rounded-full ${n8nEnabled ? 'bg-orange-500' : 'bg-slate-400'}`}></span>
+              </button>
+            )}
 
             {/* AI Assistant Button */}
             <button

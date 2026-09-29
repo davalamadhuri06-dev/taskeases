@@ -15,12 +15,41 @@ import { TaskList } from './components/TaskList';
 import { TaskModal } from './components/TaskModal';
 import { DeleteConfirmModal } from './components/DeleteConfirmModal';
 import { AiAssistantDrawer } from './components/AiAssistantDrawer';
+import { N8nChatWidget } from './components/N8nChatWidget';
+import { N8nSettingsModal } from './components/N8nSettingsModal';
+
+const N8N_STORAGE_KEY = 'taskease_n8n_config_v1';
 
 export default function App() {
   const [tasks, setTasks] = useState<Task[]>(() => loadTasksFromStorage());
   const [searchQuery, setSearchQuery] = useState('');
   const [activeFilter, setActiveFilter] = useState<FilterType>('all');
   const [sortBy, setSortBy] = useState<SortType>('due_earliest');
+
+  // n8n Chatbot configuration
+  const [n8nConfig, setN8nConfig] = useState(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const saved = localStorage.getItem(N8N_STORAGE_KEY);
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          return {
+            webhookUrl:
+              parsed.webhookUrl ||
+              'https://madhuridavala.app.n8n.cloud/webhook/aa2ab3fb-cf8a-48f7-ab08-71643fab5322/chat',
+            isEnabled: parsed.isEnabled ?? true,
+          };
+        }
+      } catch (e) {
+        console.error('Error loading n8n config:', e);
+      }
+    }
+    return {
+      webhookUrl: 'https://madhuridavala.app.n8n.cloud/webhook/aa2ab3fb-cf8a-48f7-ab08-71643fab5322/chat',
+      isEnabled: true,
+    };
+  });
+  const [isN8nSettingsOpen, setIsN8nSettingsOpen] = useState(false);
 
   // Modals & Panels
   const [isTaskModalOpen, setIsTaskModalOpen] = useState(false);
@@ -206,6 +235,8 @@ export default function App() {
         onToggleAiAssistant={() => setIsAiDrawerOpen((prev) => !prev)}
         isAiDrawerOpen={isAiDrawerOpen}
         onResetDemoData={handleResetDemoData}
+        onOpenN8nSettings={() => setIsN8nSettingsOpen(true)}
+        n8nEnabled={n8nConfig.isEnabled}
       />
 
       {/* Main Content Area */}
@@ -302,6 +333,32 @@ export default function App() {
         onClose={() => setIsAiDrawerOpen(false)}
         tasks={tasks}
         onTasksUpdate={handleTasksUpdateFromAi}
+      />
+
+      {/* n8n Chatbot Integration Widget (Target: webhook aa2ab3fb-cf8a-48f7-ab08-71643fab5322) */}
+      <N8nChatWidget
+        webhookUrl={n8nConfig.webhookUrl}
+        isEnabled={n8nConfig.isEnabled}
+        onOpenSettings={() => setIsN8nSettingsOpen(true)}
+        tasks={tasks}
+        onTasksUpdate={handleTasksUpdateFromAi}
+      />
+
+      {/* n8n Settings Modal */}
+      <N8nSettingsModal
+        isOpen={isN8nSettingsOpen}
+        onClose={() => setIsN8nSettingsOpen(false)}
+        webhookUrl={n8nConfig.webhookUrl}
+        isEnabled={n8nConfig.isEnabled}
+        onSave={(newConfig) => {
+          setN8nConfig(newConfig);
+          try {
+            localStorage.setItem(N8N_STORAGE_KEY, JSON.stringify(newConfig));
+          } catch (e) {
+            console.error(e);
+          }
+          showToast('Updated n8n Chatbot settings');
+        }}
       />
 
       {/* Add / Edit Task Modal */}
