@@ -104,6 +104,73 @@ export function processUserRequest(
   const lower = text.toLowerCase();
   const todayStr = getTodayDateString();
 
+  // 0. EXHAUSTIVE WEBSITE DATA INQUIRY (All website & app data)
+  if (
+    lower.includes('all data') ||
+    lower.includes('all the data') ||
+    lower.includes('website data') ||
+    lower.includes('app data') ||
+    lower.includes('site data') ||
+    lower.includes('export data') ||
+    lower.includes('full report') ||
+    lower.includes('everything about my website')
+  ) {
+    const stats = calculateDashboardStatistics(currentTasks);
+    const pendingList = currentTasks.filter((t) => !t.completed);
+    const completedList = currentTasks.filter((t) => t.completed);
+    const highPriorityList = currentTasks.filter((t) => t.priority === 'high' && !t.completed);
+
+    const reply =
+      `🌐 **TaskEase Complete Website & Workspace Overview**\n\n` +
+      `**Platform Details:**\n` +
+      `• Application: **TaskEase** (Smart Task & Productivity Dashboard)\n` +
+      `• Architecture: React + TypeScript + Vite + Tailwind CSS\n` +
+      `• Active AI Engine: Natural Language Task Assistant + n8n Cloud Webhook\n` +
+      `• Local System Date: ${formatDateToDisplay(todayStr)} (${todayStr})\n\n` +
+      `📊 **Live Workspace Metrics:**\n` +
+      `• Total Tasks in Database: ${stats.totalTasks}\n` +
+      `• Pending Tasks: ${stats.pendingTasks}\n` +
+      `• Completed Tasks: ${stats.completedTasks}\n` +
+      `• Completion Rate: ${stats.completionPercentage}%\n` +
+      `• High Priority Active: ${highPriorityList.length}\n` +
+      `• Status: ${stats.productivityMessage}\n\n` +
+      `📌 **Pending Tasks Breakdown (${pendingList.length}):**\n` +
+      (pendingList.length > 0
+        ? pendingList
+            .map(
+              (t, i) =>
+                `${i + 1}. **${t.title}** [${t.priority.toUpperCase()}] — Due: ${formatDateToDisplay(
+                  t.dueDate
+                )}${t.dueDate < todayStr ? ' ⚠️ *(Overdue)*' : t.dueDate === todayStr ? ' 🔔 *(Due Today)*' : ''}`
+            )
+            .join('\n')
+        : '*(No pending tasks! All caught up)*') +
+      `\n\n` +
+      `✅ **Completed Tasks History (${completedList.length}):**\n` +
+      (completedList.length > 0
+        ? completedList
+            .map((t, i) => `${i + 1}. ~~${t.title}~~ (${formatDateToDisplay(t.dueDate)})`)
+            .join('\n')
+        : '*(No completed tasks yet)*') +
+      `\n\n` +
+      `🛠️ **Supported Agent Controls:**\n` +
+      `• "Add [title] [priority] [due date]"\n` +
+      `• "Complete [task name]"\n` +
+      `• "Delete [task name]"\n` +
+      `• "What do I need to do today?"\n` +
+      `• "Show high priority tasks"`;
+
+    return {
+      replyText: reply,
+      executedAction: { type: 'stats' },
+      suggestedActions: [
+        { label: "What do I need to do today?", actionPrompt: "What do I need to do today?" },
+        { label: "Show high priority tasks", actionPrompt: "Show high priority tasks" },
+        { label: "What's pending?", actionPrompt: "What's pending?" },
+      ],
+    };
+  }
+
   // 1. STATS / PRODUCTIVITY INQUIRIES
   if (
     lower.includes('stat') ||

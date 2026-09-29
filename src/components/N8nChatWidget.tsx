@@ -3,26 +3,32 @@ import {
   X,
   Send,
   Bot,
-  Sparkles,
   ExternalLink,
-  Settings,
   RefreshCw,
   Maximize2,
   Minimize2,
   Copy,
   Check,
-  Globe,
   Radio,
-  Sliders,
+  SlidersHorizontal,
+  BarChart3,
+  PieChart,
+  TrendingUp,
+  Clock,
+  AlertTriangle,
+  FileText,
 } from 'lucide-react';
 import { Task } from '../types/task';
+import {
+  buildComprehensiveWebsiteContext,
+  buildContextualizedPrompt,
+} from '../utils/websiteContext';
 
 interface N8nChatWidgetProps {
   webhookUrl: string;
-  isEnabled: boolean;
-  onOpenSettings: () => void;
   tasks: Task[];
-  onTasksUpdate?: (tasks: Task[], message?: string) => void;
+  isOpen?: boolean;
+  onToggleOpen?: () => void;
 }
 
 interface ChatMessage {
@@ -35,13 +41,21 @@ interface ChatMessage {
 
 export const N8nChatWidget: React.FC<N8nChatWidgetProps> = ({
   webhookUrl,
-  isEnabled,
-  onOpenSettings,
   tasks,
+  isOpen: controlledIsOpen,
+  onToggleOpen,
 }) => {
-  const [isOpen, setIsOpen] = useState(false);
+  const [internalIsOpen, setInternalIsOpen] = useState(false);
+  const isOpen = controlledIsOpen !== undefined ? controlledIsOpen : internalIsOpen;
+  const setIsOpen = (open: boolean) => {
+    if (onToggleOpen) {
+      if (open !== isOpen) onToggleOpen();
+    } else {
+      setInternalIsOpen(open);
+    }
+  };
   const [isExpanded, setIsExpanded] = useState(false);
-  const [activeTab, setActiveTab] = useState<'chat' | 'embed'>('chat');
+  const [activeTab, setActiveTab] = useState<'chat' | 'charts' | 'embed'>('chat');
   const [copied, setCopied] = useState(false);
 
   // Chat message state
@@ -49,7 +63,7 @@ export const N8nChatWidget: React.FC<N8nChatWidgetProps> = ({
     {
       id: 'welcome',
       sender: 'bot',
-      text: "👋 Hi! I'm connected directly to your n8n workflow. Ask me anything, or let me help you with your daily tasks!",
+      text: "👋 Hi! I'm connected to your n8n workflow. Ask me questions, brainstorm, or let me assist you with your tasks!",
       timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
     },
   ]);
@@ -60,13 +74,11 @@ export const N8nChatWidget: React.FC<N8nChatWidgetProps> = ({
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  const cleanUrl =
-    webhookUrl.trim() ||
-    'https://madhuridavala.app.n8n.cloud/webhook/aa2ab3fb-cf8a-48f7-ab08-71643fab5322/chat';
+  const cleanUrl = webhookUrl.trim();
 
   // Extract webhook ID for display
   const webhookIdMatch = cleanUrl.match(/webhook\/([^/]+)/);
-  const displayWebhookId = webhookIdMatch ? webhookIdMatch[1] : 'aa2ab3fb-cf8a-48f7-ab08-71643fab5322';
+  const displayWebhookId = webhookIdMatch ? webhookIdMatch[1] : 'aa2ab3fb';
 
   // Scroll to bottom on new messages
   useEffect(() => {
@@ -82,10 +94,6 @@ export const N8nChatWidget: React.FC<N8nChatWidgetProps> = ({
     }
   }, [isOpen, activeTab]);
 
-  if (!isEnabled) {
-    return null;
-  }
-
   const handleCopyLink = () => {
     navigator.clipboard.writeText(cleanUrl);
     setCopied(true);
@@ -97,7 +105,7 @@ export const N8nChatWidget: React.FC<N8nChatWidgetProps> = ({
       {
         id: `welcome_${Date.now()}`,
         sender: 'bot',
-        text: 'Chat history cleared. Send a new message to your n8n workflow!',
+        text: 'Chat history reset. How can I assist you with your workflow?',
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       },
     ]);
@@ -120,21 +128,43 @@ export const N8nChatWidget: React.FC<N8nChatWidgetProps> = ({
     setIsLoading(true);
 
     try {
+      // Build comprehensive website, task, and workspace context for n8n AI Agent
+      const siteData = buildComprehensiveWebsiteContext(tasks);
+      const contextualizedPrompt = buildContextualizedPrompt(query, tasks);
+
+      // We send both the rich contextualized prompt in chatInput/message/text (so the n8n LLM agent always sees it
+      // even if the n8n workflow only reads $json.chatInput or $json.message) AND structured fields.
       const payload = {
         action: 'sendMessage',
         sessionId: sessionId,
-        chatInput: query,
-        message: query,
+        chatInput: contextualizedPrompt,
+        message: contextualizedPrompt,
+        text: contextualizedPrompt,
+        userQuery: query,
+        rawQuery: query,
+        websiteData: siteData,
+        context: siteData,
         metadata: {
           source: 'TaskEase',
-          activeTasks: tasks.length,
-          tasksSummary: tasks.map((t) => ({
+          applicationName: siteData.application.name,
+          platform: siteData.application.platform,
+          currentDate: siteData.application.currentDate,
+          activeTasksCount: siteData.metrics.totalTasks,
+          pendingTasksCount: siteData.metrics.pendingTasks,
+          completedTasksCount: siteData.metrics.completedTasks,
+          completionRate: `${siteData.metrics.completionPercentage}%`,
+          highPriorityCount: siteData.metrics.highPriorityTasks,
+          productivityStatus: siteData.metrics.productivityMessage,
+          tasks: tasks.map((t) => ({
             id: t.id,
             title: t.title,
+            description: t.description || '',
             priority: t.priority,
             dueDate: t.dueDate,
             completed: t.completed,
           })),
+          pendingTasks: siteData.taskBreakdown.pending,
+          completedTasks: siteData.taskBreakdown.completed,
         },
       };
 
@@ -149,7 +179,7 @@ export const N8nChatWidget: React.FC<N8nChatWidgetProps> = ({
 
       if (!response.ok) {
         throw new Error(
-          `n8n webhook responded with status ${response.status} (${response.statusText})`
+          `n8n webhook returned status ${response.status} (${response.statusText})`
         );
       }
 
@@ -157,7 +187,7 @@ export const N8nChatWidget: React.FC<N8nChatWidgetProps> = ({
       const contentType = response.headers.get('content-type') || '';
       if (contentType.includes('application/json')) {
         const data = await response.json();
-        // Support common n8n AI agent response shapes
+        // Support common n8n AI agent / Chat trigger response schemas
         botReply =
           data.output ||
           data.text ||
@@ -174,14 +204,14 @@ export const N8nChatWidget: React.FC<N8nChatWidgetProps> = ({
         {
           id: `bot_${Date.now()}`,
           sender: 'bot',
-          text: botReply || 'Received response from n8n workflow.',
+          text: botReply || 'Workflow executed successfully.',
           timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
         },
       ]);
     } catch (err: unknown) {
-      console.warn('n8n webhook error notice:', err);
+      console.warn('n8n webhook request notice:', err);
       const errorMessage =
-        err instanceof Error ? err.message : 'Unable to connect to n8n webhook.';
+        err instanceof Error ? err.message : 'Failed to communicate with n8n webhook.';
 
       setMessages((prev) => [
         ...prev,
@@ -189,7 +219,7 @@ export const N8nChatWidget: React.FC<N8nChatWidgetProps> = ({
           id: `err_${Date.now()}`,
           sender: 'system',
           isError: true,
-          text: `⚠️ **Webhook Notice**: ${errorMessage}\n\n*Tips:*\n- Ensure your n8n workflow is **Active** (or in "Listen for test event" mode in n8n Cloud).\n- Ensure CORS is permitted or test with the Embed View tab above.\n- Target URL: \`${cleanUrl}\``,
+          text: `⚠️ **n8n Status**: ${errorMessage}\n\n*Checklist:*\n1. Confirm the workflow is set to **Active** in n8n Cloud.\n2. Ensure the "When Chat Message Received" node has chat enabled.\n3. You can also view the embedded mode using the **Embed** tab above.`,
           timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
         },
       ]);
@@ -201,7 +231,7 @@ export const N8nChatWidget: React.FC<N8nChatWidgetProps> = ({
   return (
     <>
       {/* Floating Trigger Button (Bottom-Right) */}
-      <div className="fixed bottom-6 right-6 sm:right-56 z-30 flex items-center">
+      <div className="fixed bottom-6 right-6 z-30 flex items-center">
         {!isOpen && (
           <button
             type="button"
@@ -218,7 +248,7 @@ export const N8nChatWidget: React.FC<N8nChatWidgetProps> = ({
             </div>
             <span className="text-sm font-semibold">n8n Chat</span>
             <span className="hidden md:inline-flex text-[10px] uppercase font-bold tracking-wider px-1.5 py-0.5 rounded bg-white/20">
-              Active
+              Live
             </span>
           </button>
         )}
@@ -245,7 +275,7 @@ export const N8nChatWidget: React.FC<N8nChatWidgetProps> = ({
                   <span className="h-2 w-2 rounded-full bg-emerald-400 ring-2 ring-emerald-300/40 shrink-0"></span>
                 </div>
                 <p className="text-[11px] text-orange-100 font-mono truncate">
-                  ID: {displayWebhookId.substring(0, 8)}...
+                  {displayWebhookId.substring(0, 14)}...
                 </p>
               </div>
             </div>
@@ -276,7 +306,7 @@ export const N8nChatWidget: React.FC<N8nChatWidgetProps> = ({
                 href={cleanUrl}
                 target="_blank"
                 rel="noopener noreferrer"
-                title="Open webhook in new tab"
+                title="Open webhook endpoint in new window"
                 className="p-1.5 rounded-lg text-white/80 hover:text-white hover:bg-white/10 transition-colors"
               >
                 <ExternalLink className="w-4 h-4" />
@@ -292,16 +322,6 @@ export const N8nChatWidget: React.FC<N8nChatWidgetProps> = ({
                 {isExpanded ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
               </button>
 
-              {/* Settings */}
-              <button
-                type="button"
-                onClick={onOpenSettings}
-                title="Configure n8n Webhook"
-                className="p-1.5 rounded-lg text-white/80 hover:text-white hover:bg-white/10 transition-colors"
-              >
-                <Settings className="w-4 h-4" />
-              </button>
-
               {/* Close */}
               <button
                 type="button"
@@ -314,25 +334,37 @@ export const N8nChatWidget: React.FC<N8nChatWidgetProps> = ({
             </div>
           </div>
 
-          {/* Subheader view switcher & status */}
+          {/* Subheader tab switch & status */}
           <div className="bg-orange-50/90 px-3.5 py-1.5 border-b border-orange-100 flex items-center justify-between text-[11px] text-orange-950 font-medium shrink-0">
-            <div className="flex items-center gap-2 truncate">
-              <span className="flex items-center gap-1 text-orange-800 font-semibold truncate">
-                <Radio className="w-3 h-3 text-emerald-500 animate-pulse" />
-                <span className="truncate">{cleanUrl.replace('https://', '')}</span>
+            <div className="flex items-center gap-1.5 truncate">
+              <Radio className="w-3 h-3 text-emerald-500 animate-pulse shrink-0" />
+              <span className="truncate font-mono text-[10px] text-orange-900">
+                madhuridavala.app.n8n.cloud
               </span>
             </div>
             <div className="flex items-center gap-1 shrink-0 ml-2">
               <button
                 type="button"
                 onClick={() => setActiveTab('chat')}
-                className={`px-2 py-0.5 rounded text-[10px] font-bold transition-all ${
+                className={`px-2 py-0.5 rounded text-[10px] font-bold transition-all flex items-center gap-1 ${
                   activeTab === 'chat'
                     ? 'bg-orange-600 text-white shadow-2xs'
                     : 'text-orange-800 hover:bg-orange-200/60'
                 }`}
               >
-                Chat
+                <span>Chat</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setActiveTab('charts')}
+                className={`px-2 py-0.5 rounded text-[10px] font-bold transition-all flex items-center gap-1 ${
+                  activeTab === 'charts'
+                    ? 'bg-orange-600 text-white shadow-2xs'
+                    : 'text-orange-800 hover:bg-orange-200/60'
+                }`}
+              >
+                <BarChart3 className="w-3 h-3" />
+                <span>Charts & Data</span>
               </button>
               <button
                 type="button"
@@ -383,7 +415,7 @@ export const N8nChatWidget: React.FC<N8nChatWidgetProps> = ({
                     <div className="w-2 h-2 rounded-full bg-rose-500 animate-bounce [animation-delay:0.2s]" />
                     <div className="w-2 h-2 rounded-full bg-indigo-500 animate-bounce [animation-delay:0.4s]" />
                     <span className="text-[11px] text-slate-500 ml-1 font-medium">
-                      n8n workflow is thinking...
+                      n8n workflow is responding...
                     </span>
                   </div>
                 )}
@@ -395,24 +427,31 @@ export const N8nChatWidget: React.FC<N8nChatWidgetProps> = ({
               <div className="px-3 py-1.5 bg-white border-t border-slate-100 flex items-center gap-1.5 overflow-x-auto no-scrollbar shrink-0">
                 <button
                   type="button"
-                  onClick={() => handleSendMessage(undefined, 'Summarize my current task list')}
-                  className="text-[11px] px-2.5 py-0.5 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-700 whitespace-nowrap transition-colors font-medium"
+                  onClick={() => handleSendMessage(undefined, 'Review and analyze all my current website and task data in charts and give me a complete productivity report')}
+                  className="text-[11px] px-2.5 py-0.5 rounded-full bg-orange-100 hover:bg-orange-200 text-orange-800 whitespace-nowrap transition-colors font-medium flex items-center gap-1 shrink-0"
+                >
+                  📊 Send all website data & charts
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleSendMessage(undefined, 'Give me a priority distribution and deadline chart breakdown of my tasks')}
+                  className="text-[11px] px-2.5 py-0.5 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-700 whitespace-nowrap transition-colors font-medium shrink-0"
+                >
+                  📈 Priority & schedule chart
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleSendMessage(undefined, 'Summarize my pending tasks with overdue warnings')}
+                  className="text-[11px] px-2.5 py-0.5 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-700 whitespace-nowrap transition-colors font-medium shrink-0"
                 >
                   📋 Summarize tasks
                 </button>
                 <button
                   type="button"
                   onClick={() => handleSendMessage(undefined, 'What should I prioritize today?')}
-                  className="text-[11px] px-2.5 py-0.5 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-700 whitespace-nowrap transition-colors font-medium"
+                  className="text-[11px] px-2.5 py-0.5 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-700 whitespace-nowrap transition-colors font-medium shrink-0"
                 >
                   ⚡ Plan priorities
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleSendMessage(undefined, 'Hello! Check workflow connection')}
-                  className="text-[11px] px-2.5 py-0.5 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-700 whitespace-nowrap transition-colors font-medium"
-                >
-                  👋 Ping n8n
                 </button>
               </div>
 
@@ -438,8 +477,190 @@ export const N8nChatWidget: React.FC<N8nChatWidgetProps> = ({
                 </button>
               </form>
             </>
+          ) : activeTab === 'charts' ? (
+            /* Tab 2: Visual Charts & Report */
+            (() => {
+              const siteContext = buildComprehensiveWebsiteContext(tasks);
+              const { summary, priorityBreakdown, statusBreakdown, scheduleBreakdown } = siteContext.charts;
+
+              return (
+                <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-slate-50/70 text-xs">
+                  {/* Top Action Banner */}
+                  <div className="bg-gradient-to-r from-orange-500 via-rose-500 to-indigo-600 rounded-xl p-3 text-white flex items-center justify-between shadow-xs">
+                    <div>
+                      <h4 className="font-bold text-sm">Live Website Chart Data</h4>
+                      <p className="text-[11px] text-orange-100">
+                        {summary.total} tasks tracked &bull; {summary.completionPercentage}% completed
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setActiveTab('chat');
+                        handleSendMessage(undefined, 'Review and analyze all my current website and task data in charts and give me a complete productivity report');
+                      }}
+                      className="px-3 py-1.5 rounded-lg bg-white text-orange-700 hover:bg-orange-50 font-bold text-xs shadow-xs transition-colors shrink-0 flex items-center gap-1.5"
+                    >
+                      <Send className="w-3.5 h-3.5" />
+                      <span>Send Charts to AI</span>
+                    </button>
+                  </div>
+
+                  {/* Summary Metric Cards */}
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                    <div className="bg-white p-3 rounded-xl border border-slate-200 shadow-2xs">
+                      <span className="text-[10px] text-slate-400 uppercase font-semibold">Total Tasks</span>
+                      <p className="text-xl font-extrabold text-slate-900 mt-0.5">{summary.total}</p>
+                      <span className="text-[10px] text-indigo-600 font-medium">TaskEase Board</span>
+                    </div>
+                    <div className="bg-white p-3 rounded-xl border border-slate-200 shadow-2xs">
+                      <span className="text-[10px] text-slate-400 uppercase font-semibold">Completed</span>
+                      <p className="text-xl font-extrabold text-emerald-600 mt-0.5">{summary.completed}</p>
+                      <span className="text-[10px] text-emerald-700 font-medium">{summary.completionPercentage}% Done</span>
+                    </div>
+                    <div className="bg-white p-3 rounded-xl border border-slate-200 shadow-2xs">
+                      <span className="text-[10px] text-slate-400 uppercase font-semibold">Pending</span>
+                      <p className="text-xl font-extrabold text-amber-600 mt-0.5">{summary.pending}</p>
+                      <span className="text-[10px] text-amber-700 font-medium">{100 - summary.completionPercentage}% Remaining</span>
+                    </div>
+                    <div className="bg-white p-3 rounded-xl border border-slate-200 shadow-2xs">
+                      <span className="text-[10px] text-slate-400 uppercase font-semibold">High Priority</span>
+                      <p className="text-xl font-extrabold text-rose-600 mt-0.5">{summary.highPriority}</p>
+                      <span className="text-[10px] text-rose-700 font-medium">{summary.overdueCount} Overdue</span>
+                    </div>
+                  </div>
+
+                  {/* Chart Card 1: Completion Progress Bar */}
+                  <div className="bg-white p-3.5 rounded-xl border border-slate-200 shadow-2xs space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="font-bold text-slate-800 flex items-center gap-1.5">
+                        <TrendingUp className="w-3.5 h-3.5 text-orange-500" />
+                        Completion Ratio Chart
+                      </span>
+                      <span className="font-bold text-emerald-600">{summary.completionPercentage}%</span>
+                    </div>
+                    <div className="w-full bg-slate-100 rounded-full h-3.5 overflow-hidden flex">
+                      <div
+                        className="bg-emerald-500 h-full transition-all duration-300"
+                        style={{ width: `${summary.completionPercentage}%` }}
+                        title={`Completed: ${summary.completionPercentage}%`}
+                      />
+                      <div
+                        className="bg-amber-400 h-full transition-all duration-300"
+                        style={{ width: `${100 - summary.completionPercentage}%` }}
+                        title={`Pending: ${100 - summary.completionPercentage}%`}
+                      />
+                    </div>
+                    <div className="flex justify-between text-[11px] text-slate-500 pt-0.5">
+                      <span className="flex items-center gap-1">
+                        <span className="w-2 h-2 rounded-full bg-emerald-500" />
+                        Completed: {summary.completed} tasks ({statusBreakdown.completed.percentage}%)
+                      </span>
+                      <span className="flex items-center gap-1">
+                        <span className="w-2 h-2 rounded-full bg-amber-400" />
+                        Pending: {summary.pending} tasks ({statusBreakdown.pending.percentage}%)
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Chart Card 2: Priority Distribution Bar Chart */}
+                  <div className="bg-white p-3.5 rounded-xl border border-slate-200 shadow-2xs space-y-2.5">
+                    <span className="font-bold text-slate-800 flex items-center gap-1.5">
+                      <BarChart3 className="w-3.5 h-3.5 text-indigo-500" />
+                      Priority Distribution Chart
+                    </span>
+
+                    {/* High Priority Bar */}
+                    <div className="space-y-1">
+                      <div className="flex justify-between text-[11px]">
+                        <span className="font-medium text-rose-700">High Priority</span>
+                        <span className="font-semibold text-slate-700">
+                          {priorityBreakdown.high.count} tasks ({priorityBreakdown.high.percentage}%)
+                        </span>
+                      </div>
+                      <div className="w-full bg-slate-100 rounded-full h-2.5 overflow-hidden">
+                        <div
+                          className="bg-rose-500 h-full rounded-full transition-all"
+                          style={{ width: `${priorityBreakdown.high.percentage}%` }}
+                        />
+                      </div>
+                    </div>
+
+                    {/* Medium Priority Bar */}
+                    <div className="space-y-1">
+                      <div className="flex justify-between text-[11px]">
+                        <span className="font-medium text-amber-700">Medium Priority</span>
+                        <span className="font-semibold text-slate-700">
+                          {priorityBreakdown.medium.count} tasks ({priorityBreakdown.medium.percentage}%)
+                        </span>
+                      </div>
+                      <div className="w-full bg-slate-100 rounded-full h-2.5 overflow-hidden">
+                        <div
+                          className="bg-amber-500 h-full rounded-full transition-all"
+                          style={{ width: `${priorityBreakdown.medium.percentage}%` }}
+                        />
+                      </div>
+                    </div>
+
+                    {/* Low Priority Bar */}
+                    <div className="space-y-1">
+                      <div className="flex justify-between text-[11px]">
+                        <span className="font-medium text-blue-700">Low Priority</span>
+                        <span className="font-semibold text-slate-700">
+                          {priorityBreakdown.low.count} tasks ({priorityBreakdown.low.percentage}%)
+                        </span>
+                      </div>
+                      <div className="w-full bg-slate-100 rounded-full h-2.5 overflow-hidden">
+                        <div
+                          className="bg-blue-500 h-full rounded-full transition-all"
+                          style={{ width: `${priorityBreakdown.low.percentage}%` }}
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Chart Card 3: Deadline & Schedule Status */}
+                  <div className="bg-white p-3.5 rounded-xl border border-slate-200 shadow-2xs space-y-2">
+                    <span className="font-bold text-slate-800 flex items-center gap-1.5">
+                      <Clock className="w-3.5 h-3.5 text-amber-500" />
+                      Pending Schedule Breakdown
+                    </span>
+                    <div className="grid grid-cols-3 gap-2 text-center pt-1">
+                      <div className="p-2 rounded-lg bg-rose-50 border border-rose-100">
+                        <span className="text-[10px] text-rose-600 font-semibold block">Overdue</span>
+                        <span className="text-lg font-bold text-rose-700">{scheduleBreakdown.overdue.count}</span>
+                        <span className="text-[9px] text-rose-500 block">{scheduleBreakdown.overdue.percentage}% of pending</span>
+                      </div>
+                      <div className="p-2 rounded-lg bg-amber-50 border border-amber-100">
+                        <span className="text-[10px] text-amber-600 font-semibold block">Due Today</span>
+                        <span className="text-lg font-bold text-amber-700">{scheduleBreakdown.dueToday.count}</span>
+                        <span className="text-[9px] text-amber-500 block">{scheduleBreakdown.dueToday.percentage}% of pending</span>
+                      </div>
+                      <div className="p-2 rounded-lg bg-emerald-50 border border-emerald-100">
+                        <span className="text-[10px] text-emerald-600 font-semibold block">Upcoming</span>
+                        <span className="text-lg font-bold text-emerald-700">{scheduleBreakdown.upcoming.count}</span>
+                        <span className="text-[9px] text-emerald-500 block">{scheduleBreakdown.upcoming.percentage}% of pending</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Quick Action Button to Send to AI Agent */}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setActiveTab('chat');
+                      handleSendMessage(undefined, 'Review and analyze all my current website and task data in charts and give me a complete productivity report');
+                    }}
+                    className="w-full py-2.5 rounded-xl bg-orange-600 hover:bg-orange-700 text-white font-semibold text-xs flex items-center justify-center gap-2 shadow-xs transition-colors"
+                  >
+                    <Send className="w-4 h-4" />
+                    <span>Send this Live Chart & Data Report to n8n AI Agent</span>
+                  </button>
+                </div>
+              );
+            })()
           ) : (
-            /* Tab 2: Embedded View (iframe preview of the webhook / assistant) */
+            /* Tab 3: Embedded View */
             <div className="relative flex-1 w-full bg-slate-50 overflow-hidden flex flex-col">
               <iframe
                 src={cleanUrl}
@@ -448,12 +669,12 @@ export const N8nChatWidget: React.FC<N8nChatWidgetProps> = ({
                 allow="clipboard-write; clipboard-read; microphone; camera"
               />
               <div className="p-2.5 bg-white border-t border-slate-200 text-[11px] text-slate-500 flex items-center justify-between">
-                <span>Webhook: {displayWebhookId}</span>
+                <span className="truncate">Webhook: {displayWebhookId}</span>
                 <a
                   href={cleanUrl}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="text-orange-600 font-semibold hover:underline flex items-center gap-1"
+                  className="text-orange-600 font-semibold hover:underline flex items-center gap-1 shrink-0 ml-2"
                 >
                   <span>Open standalone</span>
                   <ExternalLink className="w-3 h-3" />

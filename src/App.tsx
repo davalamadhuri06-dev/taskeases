@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
-import { Bot, Sparkles, Plus, CheckCircle, AlertCircle } from 'lucide-react';
+import { Plus, CheckCircle, AlertCircle } from 'lucide-react';
 import { Task, FilterType, SortType } from './types/task';
 import {
   loadTasksFromStorage,
@@ -14,11 +14,10 @@ import { TaskFilterBar } from './components/TaskFilterBar';
 import { TaskList } from './components/TaskList';
 import { TaskModal } from './components/TaskModal';
 import { DeleteConfirmModal } from './components/DeleteConfirmModal';
-import { AiAssistantDrawer } from './components/AiAssistantDrawer';
 import { N8nChatWidget } from './components/N8nChatWidget';
-import { N8nSettingsModal } from './components/N8nSettingsModal';
 
-const N8N_STORAGE_KEY = 'taskease_n8n_config_v1';
+const N8N_WEBHOOK_URL =
+  'https://madhuridavala.app.n8n.cloud/webhook/aa2ab3fb-cf8a-48f7-ab08-71643fab5322/chat';
 
 export default function App() {
   const [tasks, setTasks] = useState<Task[]>(() => loadTasksFromStorage());
@@ -26,36 +25,11 @@ export default function App() {
   const [activeFilter, setActiveFilter] = useState<FilterType>('all');
   const [sortBy, setSortBy] = useState<SortType>('due_earliest');
 
-  // n8n Chatbot configuration
-  const [n8nConfig, setN8nConfig] = useState(() => {
-    if (typeof window !== 'undefined') {
-      try {
-        const saved = localStorage.getItem(N8N_STORAGE_KEY);
-        if (saved) {
-          const parsed = JSON.parse(saved);
-          return {
-            webhookUrl:
-              parsed.webhookUrl ||
-              'https://madhuridavala.app.n8n.cloud/webhook/aa2ab3fb-cf8a-48f7-ab08-71643fab5322/chat',
-            isEnabled: parsed.isEnabled ?? true,
-          };
-        }
-      } catch (e) {
-        console.error('Error loading n8n config:', e);
-      }
-    }
-    return {
-      webhookUrl: 'https://madhuridavala.app.n8n.cloud/webhook/aa2ab3fb-cf8a-48f7-ab08-71643fab5322/chat',
-      isEnabled: true,
-    };
-  });
-  const [isN8nSettingsOpen, setIsN8nSettingsOpen] = useState(false);
-
   // Modals & Panels
   const [isTaskModalOpen, setIsTaskModalOpen] = useState(false);
   const [editingTask, setEditingTask] = useState<Task | null>(null);
   const [deletingTask, setDeletingTask] = useState<Task | null>(null);
-  const [isAiDrawerOpen, setIsAiDrawerOpen] = useState(false);
+  const [isN8nChatOpen, setIsN8nChatOpen] = useState(false);
 
   // Toast feedback
   const [toastMessage, setToastMessage] = useState<string | null>(null);
@@ -149,17 +123,6 @@ export default function App() {
     }
   };
 
-  // Update tasks from AI Assistant
-  const handleTasksUpdateFromAi = (
-    updatedTasks: Task[],
-    notificationMessage?: string
-  ) => {
-    setTasks(updatedTasks);
-    if (notificationMessage) {
-      showToast(notificationMessage);
-    }
-  };
-
   // Filtered and Sorted Tasks calculation
   const filteredAndSortedTasks = useMemo(() => {
     let result = [...tasks];
@@ -232,11 +195,9 @@ export default function App() {
           setEditingTask(null);
           setIsTaskModalOpen(true);
         }}
-        onToggleAiAssistant={() => setIsAiDrawerOpen((prev) => !prev)}
-        isAiDrawerOpen={isAiDrawerOpen}
         onResetDemoData={handleResetDemoData}
-        onOpenN8nSettings={() => setIsN8nSettingsOpen(true)}
-        n8nEnabled={n8nConfig.isEnabled}
+        onToggleN8nChat={() => setIsN8nChatOpen((prev) => !prev)}
+        isN8nChatOpen={isN8nChatOpen}
       />
 
       {/* Main Content Area */}
@@ -311,54 +272,12 @@ export default function App() {
         />
       </main>
 
-      {/* Floating AI Assistant Trigger Button (Bottom Right) */}
-      {!isAiDrawerOpen && (
-        <button
-          type="button"
-          onClick={() => setIsAiDrawerOpen(true)}
-          className="fixed bottom-6 right-6 z-30 flex items-center gap-2.5 px-4 py-3 rounded-full bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white shadow-xl shadow-indigo-600/30 hover:scale-105 active:scale-95 transition-all group"
-          title="Open TaskEase AI Assistant"
-        >
-          <div className="relative">
-            <Bot className="w-5 h-5" />
-            <Sparkles className="w-3 h-3 text-amber-300 absolute -top-1 -right-1 animate-pulse" />
-          </div>
-          <span className="text-sm font-semibold pr-1">Ask AI Assistant</span>
-        </button>
-      )}
-
-      {/* Slide-over AI Assistant Drawer */}
-      <AiAssistantDrawer
-        isOpen={isAiDrawerOpen}
-        onClose={() => setIsAiDrawerOpen(false)}
-        tasks={tasks}
-        onTasksUpdate={handleTasksUpdateFromAi}
-      />
-
-      {/* n8n Chatbot Integration Widget (Target: webhook aa2ab3fb-cf8a-48f7-ab08-71643fab5322) */}
+      {/* n8n Webhook Chatbot Widget */}
       <N8nChatWidget
-        webhookUrl={n8nConfig.webhookUrl}
-        isEnabled={n8nConfig.isEnabled}
-        onOpenSettings={() => setIsN8nSettingsOpen(true)}
+        webhookUrl={N8N_WEBHOOK_URL}
         tasks={tasks}
-        onTasksUpdate={handleTasksUpdateFromAi}
-      />
-
-      {/* n8n Settings Modal */}
-      <N8nSettingsModal
-        isOpen={isN8nSettingsOpen}
-        onClose={() => setIsN8nSettingsOpen(false)}
-        webhookUrl={n8nConfig.webhookUrl}
-        isEnabled={n8nConfig.isEnabled}
-        onSave={(newConfig) => {
-          setN8nConfig(newConfig);
-          try {
-            localStorage.setItem(N8N_STORAGE_KEY, JSON.stringify(newConfig));
-          } catch (e) {
-            console.error(e);
-          }
-          showToast('Updated n8n Chatbot settings');
-        }}
+        isOpen={isN8nChatOpen}
+        onToggleOpen={() => setIsN8nChatOpen((prev) => !prev)}
       />
 
       {/* Add / Edit Task Modal */}
